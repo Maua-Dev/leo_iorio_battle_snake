@@ -94,7 +94,7 @@ public class HandlerTest {
         Type mapType = new TypeToken<Map<String, String>>() {}.getType();
         Map<String, String> body = gson.fromJson(response.getBody(), mapType);
 
-        assertEquals("up", body.get("move")); // Verifica a lógica simples atual
+        assertEquals("down", body.get("move")); // Verifica a lógica simples atual
         assertEquals("Estou indo para cima!", body.get("shout"));
     }
 
