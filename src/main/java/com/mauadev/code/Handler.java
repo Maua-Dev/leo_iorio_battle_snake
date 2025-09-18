@@ -96,7 +96,7 @@ public class Handler implements RequestHandler<APIGatewayProxyRequestEvent, APIG
         // Exemplo de lógica muito simples: sempre se mover para cima.
         // CUIDADO: Isso fará sua cobra bater na parede rapidamente!
         Map<String, String> move = new HashMap<>();
-        move.put("move", "up");
+        move.put("move", "down");
         move.put("shout", "Estou indo para cima!"); // Opcional
 
         return move;
