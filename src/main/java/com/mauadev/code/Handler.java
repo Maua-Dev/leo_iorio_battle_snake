@@ -5,9 +5,15 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyRequestEvent;
 import com.amazonaws.services.lambda.runtime.events.APIGatewayProxyResponseEvent;
 import com.google.gson.Gson;
+import com.mauadev.code.entities.Board;
+import com.mauadev.code.entities.Coordinate;
+import com.mauadev.code.entities.GameState;
+import com.mauadev.code.entities.Snake;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class Handler implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
@@ -85,22 +91,143 @@ public class Handler implements RequestHandler<APIGatewayProxyRequestEvent, APIG
         context.getLogger().log("Game Started!");
     }
 
-    /**
-     * Chamado a cada turno para decidir o movimento. 🕹️
-     */
     private Map<String, String> handleMove(APIGatewayProxyRequestEvent request, Context context) {
-        // AQUI VAI A LÓGICA DA SUA COBRA!
-        // O corpo da requisição (request.getBody()) contém o estado atual do tabuleiro.
-        // Você deve analisá-lo para tomar uma decisão inteligente.
-        
-        // Exemplo de lógica muito simples: sempre se mover para cima.
-        // CUIDADO: Isso fará sua cobra bater na parede rapidamente!
-        Map<String, String> move = new HashMap<>();
-        move.put("move", "down");
-        move.put("shout", "Estou indo para cima!"); // Opcional
+        GameState gameState = gson.fromJson(request.getBody(), GameState.class);
+        Snake you = gameState.getYou();
+        Coordinate head = you.getHead();
+        Board board = gameState.getBoard();
 
+        Map<String, Coordinate> possibleMoves = new HashMap<>();
+        possibleMoves.put("up", new Coordinate(String.valueOf(head.getX()), String.valueOf(head.getY() + 1)));
+        possibleMoves.put("down", new Coordinate(String.valueOf(head.getX()), String.valueOf(head.getY() - 1)));
+        possibleMoves.put("left", new Coordinate(String.valueOf(head.getX() - 1), String.valueOf(head.getY())));
+        possibleMoves.put("right", new Coordinate(String.valueOf(head.getX() + 1), String.valueOf(head.getY())));
+
+        List<String> safeMoves = new ArrayList<>();
+        for (Map.Entry<String, Coordinate> entry : possibleMoves.entrySet()) {
+            if (isMoveSafe(entry.getValue(), you, board)) {
+                safeMoves.add(entry.getKey());
+            }
+        }
+
+        String chosenMove;
+        if (safeMoves.isEmpty()) {
+            chosenMove = "down";
+            context.getLogger().log("WARN: No safe moves detected! Moving down by default.");
+        } else {
+            Coordinate target = findBestTarget(gameState);
+            if (target != null) {
+                chosenMove = moveTowardsTarget(target, safeMoves, head);
+            } else {
+                chosenMove = safeMoves.get(0);
+            }
+        }
+
+        context.getLogger().log("MOVE: " + chosenMove);
+        Map<String, String> move = new HashMap<>();
+        move.put("move", chosenMove);
+        move.put("shout", "Indo para " + chosenMove + "!");
         return move;
     }
+
+    private Coordinate findBestTarget(GameState gameState) {
+        Snake you = gameState.getYou();
+        Board board = gameState.getBoard();
+        List<Coordinate> foodList = board.getFood();
+        Coordinate head = you.getHead();
+
+        if (!foodList.isEmpty()) {
+            Coordinate closestFood = null;
+            int minDistance = Integer.MAX_VALUE;
+            for (Coordinate food : foodList) {
+                int distance = getDistance(head, food);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestFood = food;
+                }
+            }
+            return closestFood;
+        }
+
+        Snake closestEnemy = null;
+        int minDistance = Integer.MAX_VALUE;
+        for (Snake enemy : board.getSnakes()) {
+            if (enemy.getId().equals(you.getId())) {
+                continue;
+            }
+            int distance = getDistance(head, enemy.getHead());
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestEnemy = enemy;
+            }
+        }
+
+        return closestEnemy != null ? closestEnemy.getHead() : null;
+    }
+
+    private String moveTowardsTarget(Coordinate target, List<String> safeMoves, Coordinate head) {
+        String bestMove = safeMoves.get(0);
+        int minDistance = Integer.MAX_VALUE;
+
+        for (String move : safeMoves) {
+            Coordinate nextCoord = new Coordinate();
+            switch (move) {
+                case "up":
+                    nextCoord.setX(head.getX());
+                    nextCoord.setY(head.getY() + 1);
+                    break;
+                case "down":
+                    nextCoord.setX(head.getX());
+                    nextCoord.setY(head.getY() - 1);
+                    break;
+                case "left":
+                    nextCoord.setX(head.getX() - 1);
+                    nextCoord.setY(head.getY());
+                    break;
+                case "right":
+                    nextCoord.setX(head.getX() + 1);
+                    nextCoord.setY(head.getY());
+                    break;
+            }
+
+            int distance = getDistance(nextCoord, target);
+            if (distance < minDistance) {
+                minDistance = distance;
+                bestMove = move;
+            }
+        }
+        return bestMove;
+    }
+
+    private int getDistance(Coordinate c1, Coordinate c2) {
+        return Math.abs(c1.getX() - c2.getX()) + Math.abs(c1.getY() - c2.getY());
+    }
+
+    private boolean isMoveSafe(Coordinate targetCoord, Snake you, Board board) {
+        int x = targetCoord.getX();
+        int y = targetCoord.getY();
+
+        if (x < 0 || x >= board.getWidth() || y < 0 || y >= board.getHeight()) {
+            return false;
+        }
+
+        for (Snake snake : board.getSnakes()) {
+            List<Coordinate> body = snake.getBody();
+            // A última parte do corpo (cauda) vai se mover, então podemos ignorá-la na verificação,
+            // a menos que a cobra tenha acabado de comer e seu comprimento tenha aumentado.
+            int segmentsToCheck = snake.getHealth() == 100 ? body.size() : body.size() - 1;
+
+            for (int i = 0; i < segmentsToCheck; i++) {
+                Coordinate bodyPart = body.get(i);
+                if (x == bodyPart.getX() && y == bodyPart.getY()) {
+                    return false;
+                }
+            }
+        }
+        
+        return true;
+    }
+
 
     /**
      * Chamado no final de cada jogo. Não precisa retornar nada.
