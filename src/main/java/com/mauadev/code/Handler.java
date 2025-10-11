@@ -77,7 +77,7 @@ public class Handler implements RequestHandler<APIGatewayProxyRequestEvent, APIG
         Map<String, String> info = new HashMap<>();
         info.put("apiversion", "1");
         info.put("author", "leo-Lorio");
-        info.put("color", "#fd4949ff"); // Ex: Cinza
+        info.put("color", "#fd4949"); // Ex: Cinza
         info.put("head", "silly");
         info.put("tail", "coffee");
         return info;
